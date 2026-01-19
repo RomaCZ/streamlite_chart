@@ -178,6 +178,88 @@ fig = px.pie(project_tasks, values='Tasks Completed', names='Project',
 st.plotly_chart(fig, width='stretch')
                 """, language="python")
 
+        # Box plot for distribution analysis
+        fig4 = px.box(filtered_df, x='Project', y='Code Coverage',
+                     title='Code Coverage Distribution by Project',
+                     color='Project',
+                     points='all')  # Show all points
+        fig4.update_layout(height=400, showlegend=False)
+        st.plotly_chart(fig4, width='stretch')
+
+        if show_code:
+            with st.expander("📝 View Code"):
+                st.code("""
+import plotly.express as px
+
+fig = px.box(df, x='Project', y='Code Coverage',
+             title='Code Coverage Distribution by Project',
+             color='Project', points='all')
+st.plotly_chart(fig, width='stretch')
+                """, language="python")
+
+        # Bubble chart - 3 dimensions
+        fig5 = px.scatter(filtered_df, x='Automated Tests', y='Code Coverage',
+                         size='Tasks Completed', color='Project',
+                         title='Tests vs Coverage (bubble size = tasks completed)',
+                         hover_data=['Date', 'Bugs Found'],
+                         size_max=40)
+        fig5.update_layout(height=400)
+        st.plotly_chart(fig5, width='stretch')
+
+        if show_code:
+            with st.expander("📝 View Code"):
+                st.code("""
+import plotly.express as px
+
+fig = px.scatter(df, x='Automated Tests', y='Code Coverage',
+                size='Tasks Completed', color='Project',
+                title='Tests vs Coverage (bubble size = tasks)',
+                hover_data=['Date', 'Bugs Found'], size_max=40)
+st.plotly_chart(fig, width='stretch')
+                """, language="python")
+
+        # Stacked area chart
+        pivot_coverage = filtered_df.pivot_table(
+            values='Code Coverage',
+            index='Date',
+            columns='Project',
+            aggfunc='mean'
+        ).fillna(0)
+
+        fig6 = go.Figure()
+        for project in pivot_coverage.columns:
+            fig6.add_trace(go.Scatter(
+                x=pivot_coverage.index,
+                y=pivot_coverage[project],
+                name=project,
+                mode='lines',
+                stackgroup='one',
+                fillcolor='rgba(0,0,0,0.1)'
+            ))
+        fig6.update_layout(
+            title='Code Coverage Trends (Stacked Area)',
+            xaxis_title='Date',
+            yaxis_title='Code Coverage %',
+            hovermode='x unified',
+            height=400
+        )
+        st.plotly_chart(fig6, width='stretch')
+
+        if show_code:
+            with st.expander("📝 View Code"):
+                st.code("""
+import plotly.graph_objects as go
+
+pivot_data = df.pivot_table(values='Code Coverage',
+                            index='Date', columns='Project')
+fig = go.Figure()
+for project in pivot_data.columns:
+    fig.add_trace(go.Scatter(x=pivot_data.index, y=pivot_data[project],
+                            name=project, mode='lines', stackgroup='one'))
+fig.update_layout(title='Code Coverage Trends (Stacked Area)')
+st.plotly_chart(fig, width='stretch')
+                """, language="python")
+
     except ImportError:
         st.error("Plotly not installed. Run: `pip install plotly`")
 
@@ -275,6 +357,102 @@ chart = alt.Chart(df).mark_circle(size=60).encode(
     color='Project:N',
     tooltip=['Project:N', 'Automated Tests:Q', 'Code Coverage:Q']
 ).properties(title='Test Automation vs Code Coverage').interactive()
+
+st.altair_chart(chart, use_container_width=True)
+                """, language="python")
+
+        # Stacked bar chart
+        chart3 = alt.Chart(filtered_df.groupby(['Project', 'Date']).agg({
+            'Automated Tests': 'sum',
+            'Manual Tests': 'sum'
+        }).reset_index().melt(id_vars=['Project', 'Date'],
+                             var_name='Test Type',
+                             value_name='Count')).mark_bar().encode(
+            x=alt.X('Date:T', title='Date'),
+            y=alt.Y('Count:Q', title='Number of Tests'),
+            color='Test Type:N',
+            tooltip=['Date:T', 'Project:N', 'Test Type:N', 'Count:Q']
+        ).properties(
+            title='Automated vs Manual Tests Over Time',
+            width=600,
+            height=300
+        ).interactive()
+
+        st.altair_chart(chart3, use_container_width=True)
+
+        if show_code:
+            with st.expander("📝 View Code"):
+                st.code("""
+import altair as alt
+
+melted = df.melt(id_vars=['Project', 'Date'],
+                value_vars=['Automated Tests', 'Manual Tests'],
+                var_name='Test Type', value_name='Count')
+chart = alt.Chart(melted).mark_bar().encode(
+    x='Date:T', y='Count:Q', color='Test Type:N',
+    tooltip=['Date:T', 'Test Type:N', 'Count:Q']
+).properties(title='Automated vs Manual Tests').interactive()
+
+st.altair_chart(chart, use_container_width=True)
+                """, language="python")
+
+        # Histogram
+        chart4 = alt.Chart(filtered_df).mark_bar(opacity=0.7).encode(
+            x=alt.X('Code Coverage:Q', bin=alt.Bin(maxbins=20), title='Code Coverage %'),
+            y=alt.Y('count()', title='Frequency'),
+            color='Project:N',
+            tooltip=['Project:N', 'count()']
+        ).properties(
+            title='Code Coverage Distribution (Histogram)',
+            width=600,
+            height=300
+        )
+
+        st.altair_chart(chart4, use_container_width=True)
+
+        if show_code:
+            with st.expander("📝 View Code"):
+                st.code("""
+import altair as alt
+
+chart = alt.Chart(df).mark_bar(opacity=0.7).encode(
+    x=alt.X('Code Coverage:Q', bin=alt.Bin(maxbins=20)),
+    y=alt.Y('count()', title='Frequency'),
+    color='Project:N',
+    tooltip=['Project:N', 'count()']
+).properties(title='Code Coverage Distribution')
+
+st.altair_chart(chart, use_container_width=True)
+                """, language="python")
+
+        # Area chart with selection
+        brush = alt.selection_interval(encodings=['x'])
+
+        chart5_base = alt.Chart(filtered_df).mark_area(opacity=0.6).encode(
+            x='Date:T',
+            y='Bugs Found:Q',
+            color='Project:N',
+            tooltip=['Date:T', 'Project:N', 'Bugs Found:Q']
+        ).properties(
+            title='Bugs Found Over Time (Brush to zoom)',
+            width=600,
+            height=250
+        )
+
+        chart5 = chart5_base.add_params(brush)
+
+        st.altair_chart(chart5, use_container_width=True)
+
+        if show_code:
+            with st.expander("📝 View Code"):
+                st.code("""
+import altair as alt
+
+brush = alt.selection_interval(encodings=['x'])
+chart = alt.Chart(df).mark_area(opacity=0.6).encode(
+    x='Date:T', y='Bugs Found:Q', color='Project:N',
+    tooltip=['Date:T', 'Project:N', 'Bugs Found:Q']
+).properties(title='Bugs Found Over Time').add_params(brush)
 
 st.altair_chart(chart, use_container_width=True)
                 """, language="python")
@@ -383,6 +561,107 @@ correlation_matrix = df[numeric_cols].corr()
 sns.heatmap(correlation_matrix, annot=True, fmt='.2f',
            cmap='coolwarm', center=0, ax=ax)
 ax.set_title('Metrics Correlation Heatmap')
+st.pyplot(fig)
+                """, language="python")
+
+        # Violin plot - distribution with kernel density
+        fig, ax = plt.subplots(figsize=(10, 5))
+        sns.violinplot(data=filtered_df, x='Project', y='Code Coverage',
+                      palette='Set2', ax=ax)
+        ax.set_title('Code Coverage Distribution by Project (Violin Plot)')
+        ax.set_ylabel('Code Coverage %')
+        plt.tight_layout()
+        st.pyplot(fig)
+
+        if show_code:
+            with st.expander("📝 View Code"):
+                st.code("""
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+fig, ax = plt.subplots(figsize=(10, 5))
+sns.violinplot(data=df, x='Project', y='Code Coverage',
+              palette='Set2', ax=ax)
+ax.set_title('Code Coverage Distribution (Violin Plot)')
+st.pyplot(fig)
+                """, language="python")
+
+        # Stacked bar chart
+        fig, ax = plt.subplots(figsize=(10, 5))
+        project_summary = filtered_df.groupby('Project').agg({
+            'Automated Tests': 'sum',
+            'Manual Tests': 'sum'
+        })
+        project_summary.plot(kind='bar', stacked=True, ax=ax,
+                            color=['#2E86AB', '#A23B72'])
+        ax.set_title('Test Types by Project (Stacked Bar)')
+        ax.set_xlabel('Project')
+        ax.set_ylabel('Number of Tests')
+        ax.legend(title='Test Type')
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        st.pyplot(fig)
+
+        if show_code:
+            with st.expander("📝 View Code"):
+                st.code("""
+import matplotlib.pyplot as plt
+
+fig, ax = plt.subplots(figsize=(10, 5))
+project_summary = df.groupby('Project').agg({
+    'Automated Tests': 'sum',
+    'Manual Tests': 'sum'
+})
+project_summary.plot(kind='bar', stacked=True, ax=ax)
+ax.set_title('Test Types by Project (Stacked Bar)')
+plt.xticks(rotation=45)
+st.pyplot(fig)
+                """, language="python")
+
+        # Histogram with KDE
+        fig, ax = plt.subplots(figsize=(10, 5))
+        for project in filtered_df['Project'].unique():
+            project_data = filtered_df[filtered_df['Project'] == project]
+            sns.histplot(data=project_data, x='Tasks Completed',
+                        kde=True, label=project, alpha=0.5, ax=ax)
+        ax.set_title('Tasks Completed Distribution (Histogram with KDE)')
+        ax.set_xlabel('Tasks Completed')
+        ax.set_ylabel('Frequency')
+        ax.legend()
+        plt.tight_layout()
+        st.pyplot(fig)
+
+        if show_code:
+            with st.expander("📝 View Code"):
+                st.code("""
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+fig, ax = plt.subplots(figsize=(10, 5))
+for project in df['Project'].unique():
+    project_data = df[df['Project'] == project]
+    sns.histplot(data=project_data, x='Tasks Completed',
+                kde=True, label=project, alpha=0.5, ax=ax)
+ax.set_title('Tasks Completed Distribution')
+ax.legend()
+st.pyplot(fig)
+                """, language="python")
+
+        # Pair plot preview (using subset)
+        fig = sns.pairplot(filtered_df[['Project', 'Tasks Completed', 'Automated Tests',
+                                        'Code Coverage']].sample(min(100, len(filtered_df))),
+                          hue='Project', diag_kind='kde', height=2)
+        fig.fig.suptitle('Metrics Relationships (Pair Plot)', y=1.02)
+        st.pyplot(fig)
+
+        if show_code:
+            with st.expander("📝 View Code"):
+                st.code("""
+import seaborn as sns
+
+fig = sns.pairplot(df[['Project', 'Tasks Completed',
+                       'Automated Tests', 'Code Coverage']],
+                  hue='Project', diag_kind='kde')
 st.pyplot(fig)
                 """, language="python")
 
@@ -518,6 +797,25 @@ with col1:
         }
         st_echarts(options=options, height="400px")
 
+        if show_code:
+            with st.expander("📝 View Code"):
+                st.code("""
+from streamlit_echarts import st_echarts
+
+options = {
+    "title": {"text": "Project Metrics Summary"},
+    "tooltip": {"trigger": "axis"},
+    "legend": {"data": ["Tasks", "Tests", "Bugs"]},
+    "xAxis": {"type": "category", "data": projects},
+    "yAxis": {"type": "value"},
+    "series": [
+        {"name": "Tasks", "type": "bar", "data": task_data},
+        {"name": "Tests", "type": "bar", "data": test_data}
+    ]
+}
+st_echarts(options=options, height="400px")
+                """, language="python")
+
         # Gauge chart for average progress
         avg_progress = filtered_df['Sprint Progress'].mean()
         gauge_option = {
@@ -532,6 +830,183 @@ with col1:
             ]
         }
         st_echarts(options=gauge_option, height="300px")
+
+        if show_code:
+            with st.expander("📝 View Code"):
+                st.code("""
+from streamlit_echarts import st_echarts
+
+gauge_option = {
+    "series": [{
+        "type": "gauge",
+        "progress": {"show": True},
+        "detail": {"formatter": "{value}%"},
+        "data": [{"value": 85, "name": "Progress"}]
+    }]
+}
+st_echarts(options=gauge_option, height="300px")
+                """, language="python")
+
+        # Radar chart for project comparison
+        project_avg = filtered_df.groupby('Project').agg({
+            'Tasks Completed': 'mean',
+            'Automated Tests': 'mean',
+            'Code Coverage': 'mean',
+            'Sprint Progress': 'mean'
+        }).reset_index()
+
+        # Normalize to 0-100 scale for radar
+        max_tasks = project_avg['Tasks Completed'].max()
+        max_tests = project_avg['Automated Tests'].max()
+
+        radar_data = []
+        for _, row in project_avg.iterrows():
+            radar_data.append({
+                "value": [
+                    round((row['Tasks Completed'] / max_tasks) * 100, 1),
+                    round((row['Automated Tests'] / max_tests) * 100, 1),
+                    round(row['Code Coverage'], 1),
+                    round(row['Sprint Progress'], 1)
+                ],
+                "name": row['Project']
+            })
+
+        radar_option = {
+            "title": {"text": "Project Performance Comparison (Radar)"},
+            "legend": {"data": project_avg['Project'].tolist()},
+            "radar": {
+                "indicator": [
+                    {"name": "Tasks", "max": 100},
+                    {"name": "Tests", "max": 100},
+                    {"name": "Coverage", "max": 100},
+                    {"name": "Progress", "max": 100}
+                ]
+            },
+            "series": [{
+                "type": "radar",
+                "data": radar_data
+            }]
+        }
+        st_echarts(options=radar_option, height="400px")
+
+        if show_code:
+            with st.expander("📝 View Code"):
+                st.code("""
+from streamlit_echarts import st_echarts
+
+radar_option = {
+    "title": {"text": "Project Performance (Radar)"},
+    "radar": {
+        "indicator": [
+            {"name": "Tasks", "max": 100},
+            {"name": "Tests", "max": 100},
+            {"name": "Coverage", "max": 100}
+        ]
+    },
+    "series": [{
+        "type": "radar",
+        "data": [{"value": [80, 90, 85], "name": "Project A"}]
+    }]
+}
+st_echarts(options=radar_option, height="400px")
+                """, language="python")
+
+        # Pie chart with animation
+        pie_data = []
+        for _, row in project_summary.iterrows():
+            pie_data.append({
+                "value": int(row['Tasks Completed']),
+                "name": row['Project']
+            })
+
+        pie_option = {
+            "title": {"text": "Task Distribution", "left": "center"},
+            "tooltip": {"trigger": "item"},
+            "legend": {"orient": "vertical", "left": "left"},
+            "series": [
+                {
+                    "type": "pie",
+                    "radius": "50%",
+                    "data": pie_data,
+                    "emphasis": {
+                        "itemStyle": {
+                            "shadowBlur": 10,
+                            "shadowOffsetX": 0,
+                            "shadowColor": "rgba(0, 0, 0, 0.5)"
+                        }
+                    }
+                }
+            ]
+        }
+        st_echarts(options=pie_option, height="400px")
+
+        if show_code:
+            with st.expander("📝 View Code"):
+                st.code("""
+from streamlit_echarts import st_echarts
+
+pie_option = {
+    "title": {"text": "Task Distribution"},
+    "tooltip": {"trigger": "item"},
+    "series": [{
+        "type": "pie",
+        "radius": "50%",
+        "data": [
+            {"value": 1048, "name": "Project A"},
+            {"value": 735, "name": "Project B"}
+        ]
+    }]
+}
+st_echarts(options=pie_option, height="400px")
+                """, language="python")
+
+        # Line chart with smooth curves and area
+        dates_list = sorted(filtered_df['Date'].unique())
+        line_series = []
+
+        for project in filtered_df['Project'].unique():
+            project_data = filtered_df[filtered_df['Project'] == project].sort_values('Date')
+            line_series.append({
+                "name": project,
+                "type": "line",
+                "smooth": True,
+                "areaStyle": {"opacity": 0.3},
+                "data": project_data['Tasks Completed'].tolist()
+            })
+
+        line_option = {
+            "title": {"text": "Tasks Completed Trend"},
+            "tooltip": {"trigger": "axis"},
+            "legend": {"data": filtered_df['Project'].unique().tolist()},
+            "xAxis": {
+                "type": "category",
+                "boundaryGap": False,
+                "data": [str(d)[:10] for d in dates_list]
+            },
+            "yAxis": {"type": "value"},
+            "series": line_series
+        }
+        st_echarts(options=line_option, height="400px")
+
+        if show_code:
+            with st.expander("📝 View Code"):
+                st.code("""
+from streamlit_echarts import st_echarts
+
+line_option = {
+    "title": {"text": "Tasks Trend"},
+    "tooltip": {"trigger": "axis"},
+    "xAxis": {"type": "category", "data": dates},
+    "yAxis": {"type": "value"},
+    "series": [{
+        "type": "line",
+        "smooth": True,
+        "areaStyle": {"opacity": 0.3},
+        "data": task_values
+    }]
+}
+st_echarts(options=line_option, height="400px")
+                """, language="python")
 
     except ImportError:
         st.error("streamlit-echarts not installed. Run: `pip install streamlit-echarts`")
