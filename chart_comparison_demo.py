@@ -6,23 +6,32 @@ from datetime import datetime, timedelta
 # Generate sample project metrics data
 @st.cache_data
 def generate_sample_data():
-    """Generate sample project metrics data"""
+    """Generate sample project metrics data with realistic trends"""
     dates = pd.date_range(start='2025-01-01', end='2025-12-31', freq='W')
     projects = ['Project Alpha', 'Project Beta', 'Project Gamma', 'Project Delta']
 
     data = []
-    for project in projects:
+    for idx, project in enumerate(projects):
         np.random.seed(hash(project) % 2**32)
-        for date in dates:
+        base_tasks = 20 + idx * 5
+        base_tests = 100 + idx * 20
+        base_coverage = 75 + idx * 3
+
+        for i, date in enumerate(dates):
+            # Add realistic trends over time
+            trend_factor = 1 + (i / len(dates)) * 0.3  # 30% growth over the year
+            seasonal = 1 + 0.1 * np.sin(i / 4)  # Small seasonal variation
+
             data.append({
                 'Date': date,
                 'Project': project,
-                'Tasks Completed': np.random.randint(10, 50),
-                'Automated Tests': np.random.randint(50, 200),
-                'Manual Tests': np.random.randint(5, 30),
-                'Bugs Found': np.random.randint(0, 15),
-                'Code Coverage': np.random.uniform(70, 95),
-                'Sprint Progress': np.random.uniform(60, 100)
+                'Tasks Completed': int(base_tasks * trend_factor * seasonal + np.random.randint(-5, 10)),
+                'Automated Tests': int(base_tests * trend_factor + np.random.randint(-20, 30)),
+                'Manual Tests': int(15 * (1.1 - trend_factor * 0.1) + np.random.randint(-3, 5)),  # Manual tests decrease as automation increases
+                'Bugs Found': max(0, int(10 * (1.2 - trend_factor * 0.2) + np.random.randint(-3, 5))),  # Bugs decrease over time
+                'Code Coverage': min(98, base_coverage + (i / len(dates)) * 15 + np.random.uniform(-2, 3)),
+                'Sprint Progress': min(100, 70 + trend_factor * 10 + np.random.uniform(-5, 10)),
+                'Team Size': 5 + idx
             })
 
     return pd.DataFrame(data)
@@ -42,7 +51,45 @@ selected_projects = st.sidebar.multiselect(
     default=df['Project'].unique()
 )
 
-filtered_df = df[df['Project'].isin(selected_projects)]
+# Date range selector
+min_date = df['Date'].min().date()
+max_date = df['Date'].max().date()
+date_range = st.sidebar.date_input(
+    "Select Date Range",
+    value=(min_date, max_date),
+    min_value=min_date,
+    max_value=max_date
+)
+
+# Apply filters
+filtered_df = df[df['Project'].isin(selected_projects)].copy()
+if len(date_range) == 2:
+    start_date, end_date = date_range
+    filtered_df = filtered_df[(filtered_df['Date'].dt.date >= start_date) &
+                              (filtered_df['Date'].dt.date <= end_date)]
+
+# Show code snippets toggle
+st.sidebar.divider()
+show_code = st.sidebar.checkbox("Show Code Snippets", value=False)
+
+# Key metrics
+if not filtered_df.empty:
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Tasks", f"{filtered_df['Tasks Completed'].sum():,.0f}",
+                 delta=f"{filtered_df['Tasks Completed'].mean():.1f} avg/week")
+    with col2:
+        st.metric("Automated Tests", f"{filtered_df['Automated Tests'].sum():,.0f}",
+                 delta=f"{filtered_df['Automated Tests'].mean():.0f} avg/week")
+    with col3:
+        avg_coverage = filtered_df['Code Coverage'].mean()
+        st.metric("Avg Coverage", f"{avg_coverage:.1f}%",
+                 delta=f"{filtered_df['Code Coverage'].std():.1f}% std dev")
+    with col4:
+        total_bugs = filtered_df['Bugs Found'].sum()
+        st.metric("Bugs Found", f"{total_bugs:,.0f}",
+                 delta=f"-{filtered_df['Bugs Found'].mean():.1f} avg/week" if total_bugs > 0 else "0",
+                 delta_color="inverse")
 
 # Show sample data
 with st.expander("📋 View Sample Data"):
@@ -68,8 +115,19 @@ with col1:
         fig1 = px.line(filtered_df, x='Date', y='Tasks Completed', color='Project',
                       title='Tasks Completed Over Time',
                       markers=True)
-        fig1.update_layout(hovermode='x unified')
-        st.plotly_chart(fig1, use_container_width=True)
+        fig1.update_layout(hovermode='x unified', height=400)
+        st.plotly_chart(fig1, width='stretch')
+
+        if show_code:
+            with st.expander("📝 View Code"):
+                st.code("""
+import plotly.express as px
+
+fig = px.line(df, x='Date', y='Tasks Completed', color='Project',
+              title='Tasks Completed Over Time', markers=True)
+fig.update_layout(hovermode='x unified')
+st.plotly_chart(fig, width='stretch')
+                """, language="python")
 
         # Bar chart
         monthly_data = filtered_df.groupby(['Project']).agg({
@@ -81,7 +139,44 @@ with col1:
         fig2 = px.bar(monthly_data, x='Project', y=['Tasks Completed', 'Automated Tests', 'Bugs Found'],
                      title='Metrics Summary by Project',
                      barmode='group')
-        st.plotly_chart(fig2, use_container_width=True)
+        fig2.update_layout(height=400)
+        st.plotly_chart(fig2, width='stretch')
+
+        if show_code:
+            with st.expander("📝 View Code"):
+                st.code("""
+import plotly.express as px
+
+monthly_data = df.groupby(['Project']).agg({
+    'Tasks Completed': 'sum',
+    'Automated Tests': 'sum',
+    'Bugs Found': 'sum'
+}).reset_index()
+
+fig = px.bar(monthly_data, x='Project',
+             y=['Tasks Completed', 'Automated Tests', 'Bugs Found'],
+             title='Metrics Summary by Project', barmode='group')
+st.plotly_chart(fig, width='stretch')
+                """, language="python")
+
+        # Pie chart for project distribution
+        project_tasks = filtered_df.groupby('Project')['Tasks Completed'].sum().reset_index()
+        fig3 = px.pie(project_tasks, values='Tasks Completed', names='Project',
+                     title='Task Distribution by Project',
+                     hole=0.4)  # Donut chart
+        fig3.update_layout(height=400)
+        st.plotly_chart(fig3, width='stretch')
+
+        if show_code:
+            with st.expander("📝 View Code"):
+                st.code("""
+import plotly.express as px
+
+project_tasks = df.groupby('Project')['Tasks Completed'].sum()
+fig = px.pie(project_tasks, values='Tasks Completed', names='Project',
+             title='Task Distribution by Project', hole=0.4)
+st.plotly_chart(fig, width='stretch')
+                """, language="python")
 
     except ImportError:
         st.error("Plotly not installed. Run: `pip install plotly`")
@@ -140,6 +235,21 @@ with col1:
 
         st.altair_chart(chart1, use_container_width=True)
 
+        if show_code:
+            with st.expander("📝 View Code"):
+                st.code("""
+import altair as alt
+
+chart = alt.Chart(df).mark_line(point=True).encode(
+    x='Date:T',
+    y='Tasks Completed:Q',
+    color='Project:N',
+    tooltip=['Date:T', 'Project:N', 'Tasks Completed:Q']
+).properties(title='Tasks Completed Over Time').interactive()
+
+st.altair_chart(chart, use_container_width=True)
+                """, language="python")
+
         # Multi-metric scatter plot
         chart2 = alt.Chart(filtered_df).mark_circle(size=60).encode(
             x='Automated Tests:Q',
@@ -153,6 +263,21 @@ with col1:
         ).interactive()
 
         st.altair_chart(chart2, use_container_width=True)
+
+        if show_code:
+            with st.expander("📝 View Code"):
+                st.code("""
+import altair as alt
+
+chart = alt.Chart(df).mark_circle(size=60).encode(
+    x='Automated Tests:Q',
+    y='Code Coverage:Q',
+    color='Project:N',
+    tooltip=['Project:N', 'Automated Tests:Q', 'Code Coverage:Q']
+).properties(title='Test Automation vs Code Coverage').interactive()
+
+st.altair_chart(chart, use_container_width=True)
+                """, language="python")
 
     except ImportError:
         st.error("Altair not installed. Run: `pip install altair`")
@@ -215,6 +340,25 @@ with col1:
         plt.tight_layout()
         st.pyplot(fig)
 
+        if show_code:
+            with st.expander("📝 View Code"):
+                st.code("""
+import matplotlib.pyplot as plt
+
+fig, ax = plt.subplots(figsize=(10, 4))
+for project in df['Project'].unique():
+    project_data = df[df['Project'] == project]
+    ax.plot(project_data['Date'], project_data['Tasks Completed'],
+           marker='o', label=project, linewidth=2)
+ax.set_xlabel('Date')
+ax.set_ylabel('Tasks Completed')
+ax.set_title('Tasks Completed Over Time')
+ax.legend()
+plt.xticks(rotation=45)
+plt.tight_layout()
+st.pyplot(fig)
+                """, language="python")
+
         # Heatmap of correlations
         fig, ax = plt.subplots(figsize=(8, 6))
         numeric_cols = ['Tasks Completed', 'Automated Tests', 'Manual Tests',
@@ -225,6 +369,22 @@ with col1:
         ax.set_title('Metrics Correlation Heatmap')
         plt.tight_layout()
         st.pyplot(fig)
+
+        if show_code:
+            with st.expander("📝 View Code"):
+                st.code("""
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+fig, ax = plt.subplots(figsize=(8, 6))
+numeric_cols = ['Tasks Completed', 'Automated Tests', 'Manual Tests',
+               'Bugs Found', 'Code Coverage']
+correlation_matrix = df[numeric_cols].corr()
+sns.heatmap(correlation_matrix, annot=True, fmt='.2f',
+           cmap='coolwarm', center=0, ax=ax)
+ax.set_title('Metrics Correlation Heatmap')
+st.pyplot(fig)
+                """, language="python")
 
     except ImportError:
         st.error("Matplotlib/Seaborn not installed. Run: `pip install matplotlib seaborn`")
@@ -425,7 +585,7 @@ comparison_data = pd.DataFrame({
     ]
 })
 
-st.dataframe(comparison_data, use_container_width=True, hide_index=True)
+st.dataframe(comparison_data, width='stretch', hide_index=True)
 
 st.subheader("💡 Recommendations")
 
